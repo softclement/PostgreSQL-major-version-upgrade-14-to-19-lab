@@ -439,7 +439,7 @@ diff out/inv_pg14.txt out/inv_pg14_after.txt && echo "OLD CLUSTER UNCHANGED"
 podman exec pg14 psql -U postgres -d appdb -c "CREATE TABLE app.trap_reg (id int, fn regproc)"
 ```
 
-**14b. Start from a fresh new server** (remove the container **and** its volume; removing only the container leaves the old data in the volume)
+**14b. Start from a fresh NEW server** (removes the new server `pg19-from14`: container **and** volume. The old server `pg14` is not touched)
 
 ```bash
 podman rm -f -v pg19-from14; podman volume rm -f pgdata19_from14
@@ -462,7 +462,9 @@ Failure, exiting
 (lists the database and the problem column, for example app.trap_reg.fn)
 ```
 
-**14d. Fix the problem and run the dry run again, it should pass**
+**14d. Fix the problem in the OLD server `pg14` and run the dry run again, it should pass**
+
+- The problem table lives in `pg14`, so it must be dropped there. Step 14b does not remove it
 
 ```bash
 podman exec pg14 psql -U postgres -d appdb -c "DROP TABLE app.trap_reg"

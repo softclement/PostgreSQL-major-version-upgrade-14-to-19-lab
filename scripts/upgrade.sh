@@ -3,6 +3,7 @@
 set -euo pipefail
 MODE="${1:?usage: upgrade.sh check|upgrade}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "$HERE/out"
 TGT=pg19-from14; VOL_NEW=pgdata19_from14
 IMG_NEW=docker.io/library/postgres:19rc1
 

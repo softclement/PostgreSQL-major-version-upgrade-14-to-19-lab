@@ -4,7 +4,7 @@ Learn how a PostgreSQL **major version upgrade** works by doing one: PostgreSQL 
 
 - Copy and paste each step, one at a time (about 30 minutes)
 - Needs: Ubuntu or WSL2 Ubuntu, internet access, about 2 GB free disk
-- Run every command from inside the `pg-upgrade-poc` folder
+- Run every command from inside the `PostgreSQL-major-version-upgrade-14-to-19-lab` folder
 - Tested end to end: PostgreSQL 14.24 → `postgres:19rc1`, rootless Podman 5.7
 
 ---
@@ -106,13 +106,15 @@ podman version 5.7.0
 ## Step 2 — Get the lab files
 
 ```bash
-git clone https://github.com/softclement/pg-upgrade-poc.git
-cd pg-upgrade-poc
+git clone https://github.com/softclement/PostgreSQL-major-version-upgrade-14-to-19-lab.git
+cd PostgreSQL-major-version-upgrade-14-to-19-lab
 chmod +x scripts/*.sh
+mkdir -p out backup
 ls
 ```
 
 - No `git`? Run `sudo apt install git -y` first, or use **Code → Download ZIP** on GitHub and unzip it
+- `mkdir -p out backup` creates the folders for snapshots and the backup (Git does not store empty folders)
 - Stay in this folder for all the following steps
 
 What is inside:
@@ -273,6 +275,7 @@ podman exec -i pg14 psql -U postgres -d appdb < sql/precheck.sql
 - Stop PG 14, copy its data volume to a file, start it again
 
 ```bash
+mkdir -p backup
 podman stop pg14
 podman volume export pgdata14 --output backup/pgdata14.tar
 podman start pg14
@@ -491,10 +494,10 @@ scripts/cleanup.sh --images
 
 **15c. Remove the lab folder** (SQL files, scripts, snapshots, backup)
 
-- Deletes the whole `pg-upgrade-poc` folder, including the 111 MB backup file
+- Deletes the whole `PostgreSQL-major-version-upgrade-14-to-19-lab` folder, including the 111 MB backup file
 
 ```bash
-cd .. && rm -rf pg-upgrade-poc
+cd .. && rm -rf PostgreSQL-major-version-upgrade-14-to-19-lab
 ```
 
 **15d. Check that nothing is left**
@@ -503,7 +506,7 @@ cd .. && rm -rf pg-upgrade-poc
 podman ps -a
 podman volume ls
 podman images
-ls pg-upgrade-poc 2>&1
+ls PostgreSQL-major-version-upgrade-14-to-19-lab 2>&1
 ```
 
 - Expected: no `pg14` / `pg19` / `pg19-from14` containers, no `pgdata14` / `pgdata19_from14` volumes, no `postgres` images, and `ls` says `No such file or directory`
@@ -600,8 +603,9 @@ podman exec pg14 pg_dump -U postgres -d appdb -t app.new_table | podman exec -i 
 
 | What you see | Why | Fix |
 |---|---|---|
-| `No such file or directory: scripts/...` or `sql/...` | You are not in the lab folder | `cd pg-upgrade-poc` |
+| `No such file or directory: scripts/...` or `sql/...` | You are not in the lab folder | `cd PostgreSQL-major-version-upgrade-14-to-19-lab` |
 | `Permission denied` when running a script | Script is not executable | `chmod +x scripts/*.sh` |
+| `cannot open out/inv_pg14.txt` or `backup/...: no such file or directory` | `out/` or `backup/` folder does not exist | `mkdir -p out backup` |
 | `psql: ... socket ... No such file or directory` right after `podman run` | Server is still starting | Wait: `until podman exec pg14 pg_isready -q -h 127.0.0.1 -U postgres; do sleep 1; done` |
 | `unrecognized configuration parameter "lc_collate"` on PG 19 | Setting no longer exists | Use `select datcollate from pg_database` |
 | `can only create exec sessions on running containers` | Container is stopped | `podman start pg14` (`upgrade.sh` restarts it for you) |

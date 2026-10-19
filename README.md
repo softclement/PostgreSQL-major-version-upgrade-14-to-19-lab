@@ -293,6 +293,8 @@ Expected output (short):
 
 - Runs `pg_upgrade --check`: tests whether the upgrade will work
 - **Changes nothing**: run it as often as you like
+- The first time, the script also creates the new empty server `pg19-from14` (a container **and** a volume). The dry run itself runs in a temporary container
+- If the volume already exists, the script reuses it, so for a fresh try remove **both** (Step 14b)
 
 ```bash
 scripts/upgrade.sh check
@@ -437,7 +439,7 @@ diff out/inv_pg14.txt out/inv_pg14_after.txt && echo "OLD CLUSTER UNCHANGED"
 podman exec pg14 psql -U postgres -d appdb -c "CREATE TABLE app.trap_reg (id int, fn regproc)"
 ```
 
-**14b. Start from a fresh new server**
+**14b. Start from a fresh new server** (remove the container **and** its volume; removing only the container leaves the old data in the volume)
 
 ```bash
 podman rm -f -v pg19-from14; podman volume rm -f pgdata19_from14
@@ -610,6 +612,9 @@ podman exec pg14 pg_dump -U postgres -d appdb -t app.new_table | podman exec -i 
 | `unrecognized configuration parameter "lc_collate"` on PG 19 | Setting no longer exists | Use `select datcollate from pg_database` |
 | `can only create exec sessions on running containers` | Container is stopped | `podman start pg14` (`upgrade.sh` restarts it for you) |
 | Dry run fails: `reg* data types in user tables` | Column type that `pg_upgrade` cannot convert | Drop or change the column listed in the message (Step 14) |
+| Dry run fails on `reg*` but you did not expect it | The test table from Step 14a still exists in `pg14` | `podman exec pg14 psql -U postgres -d appdb -c "DROP TABLE app.trap_reg"` (Step 14d). To see the columns: `podman exec -i pg14 psql -U postgres -d appdb < sql/precheck.sql` |
+| `Volume pgdata19_from14 exists but container pg19-from14 does not` | Only the container was removed | `podman volume rm -f pgdata19_from14`, then run the script again |
+| Dry run says the new cluster is not empty | Target volume already holds an upgraded cluster | Remove container and volume (Step 14b), run the dry run again |
 | `WARN "/" is not a shared mount` | Podman message | Harmless |
 | `wal_level is insufficient to publish logical changes` | Seed creates publications | Harmless |
 | Checksum mismatch error | New server has checksums on, old has off | New server must be created with `--no-data-checksums` (the script does this) |

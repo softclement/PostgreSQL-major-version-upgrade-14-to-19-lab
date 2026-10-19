@@ -7,6 +7,13 @@ mkdir -p "$HERE/out"
 TGT=pg19-from14; VOL_NEW=pgdata19_from14
 IMG_NEW=docker.io/library/postgres:19rc1
 
+# a leftover volume without its container means an earlier run was only half removed
+if podman volume exists "$VOL_NEW" && ! podman container exists "$TGT"; then
+  echo "Volume $VOL_NEW exists but container $TGT does not."
+  echo "Start clean:  podman volume rm -f $VOL_NEW   and run this script again."
+  exit 1
+fi
+
 podman stop pg14 >/dev/null 2>&1 || true        # old cluster must be cleanly shut down
 # always bring the old cluster back when this script ends (its data is only copied, never changed)
 trap 'podman start pg14 >/dev/null 2>&1; until podman exec pg14 pg_isready -q -h 127.0.0.1 -U postgres 2>/dev/null; do sleep 1; done' EXIT

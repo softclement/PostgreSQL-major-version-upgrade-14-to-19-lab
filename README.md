@@ -457,6 +457,9 @@ Checking data type usage      failed check: Checking for reg* data types in user
 Your installation contains one of the reg* data types in user tables.
 ...
 Failure, exiting
+
+== details from the pg_upgrade report files ==
+(lists the database and the problem column, for example app.trap_reg.fn)
 ```
 
 **14d. Fix the problem and run the dry run again, it should pass**
@@ -553,6 +556,53 @@ sudo apt remove podman -y
 - The real upgrade needs a **new, empty** target server. After it has run, that target is used, so for another try create a fresh one (Step 14b) and run again
 - In copy mode the old server is never changed, so you can upgrade from it again whenever you like
 - Later, you can upgrade the same way again (19 → next version)
+- Before trying again, make sure the **old** server has no problem columns (for example drop `app.trap_reg` from Step 14a). Otherwise the dry run fails again, because the problem is in the old server and not in the new one
+
+Try it yourself (second upgrade from the same old server):
+
+```bash
+podman exec pg14 psql -U postgres -d appdb -c "DROP TABLE IF EXISTS app.trap_reg"
+podman rm -f -v pg19-from14; podman volume rm -f pgdata19_from14
+scripts/upgrade.sh check
+scripts/upgrade.sh upgrade
+scripts/post_upgrade.sh
+scripts/inventory.sh pg19-from14 pg19-from14
+diff -u out/inv_pg14.txt out/inv_pg19-from14.txt
+```
+
+- Expected: the same result as the first time (only the extensions line differs)
+
+**I create my own table in the old server before the upgrade. Does it move to PG 19?**
+
+- Yes. Everything that exists in the old server when you run the upgrade is migrated, including your own tables and data
+- Try it:
+
+```bash
+# 1. make sure the test table from Step 14a is gone
+podman exec pg14 psql -U postgres -d appdb -c "DROP TABLE IF EXISTS app.trap_reg"
+
+# 2. create your own table in the OLD server
+podman exec pg14 psql -U postgres -d appdb \
+  -c "CREATE TABLE app.my_new_table (id int PRIMARY KEY, note text)" \
+  -c "INSERT INTO app.my_new_table VALUES (1, 'created before the upgrade')"
+
+# 3. new "before" snapshot (it now includes your table)
+scripts/inventory.sh pg14 pg14_with_table
+
+# 4. fresh new server, dry run, real upgrade, post-upgrade
+podman rm -f -v pg19-from14; podman volume rm -f pgdata19_from14
+scripts/upgrade.sh check
+scripts/upgrade.sh upgrade
+scripts/post_upgrade.sh
+
+# 5. check that your table arrived
+podman exec pg19-from14 psql -U postgres -d appdb -c "SELECT * FROM app.my_new_table"
+scripts/inventory.sh pg19-from14 pg19_with_table
+diff -u out/inv_pg14_with_table.txt out/inv_pg19_with_table.txt
+```
+
+- Expected: the `SELECT` returns your row, and the diff shows only the extensions line
+- Also compare with the first snapshot: `diff out/inv_pg14.txt out/inv_pg14_with_table.txt` shows one more table and one more index (the primary key) in the old server
 
 **After the upgrade, someone adds a table in the old server. What now?**
 
@@ -612,7 +662,7 @@ podman exec pg14 pg_dump -U postgres -d appdb -t app.new_table | podman exec -i 
 | `unrecognized configuration parameter "lc_collate"` on PG 19 | Setting no longer exists | Use `select datcollate from pg_database` |
 | `can only create exec sessions on running containers` | Container is stopped | `podman start pg14` (`upgrade.sh` restarts it for you) |
 | Dry run fails: `reg* data types in user tables` | Column type that `pg_upgrade` cannot convert | Drop or change the column listed in the message (Step 14) |
-| Dry run fails on `reg*` but you did not expect it | The test table from Step 14a still exists in `pg14` | `podman exec pg14 psql -U postgres -d appdb -c "DROP TABLE app.trap_reg"` (Step 14d). To see the columns: `podman exec -i pg14 psql -U postgres -d appdb < sql/precheck.sql` |
+| Dry run fails on `reg*` but you did not expect it (the script prints the problem column at the end) | The test table from Step 14a still exists in `pg14` | `podman exec pg14 psql -U postgres -d appdb -c "DROP TABLE app.trap_reg"` (Step 14d). To see the columns: `podman exec -i pg14 psql -U postgres -d appdb < sql/precheck.sql` |
 | `Volume pgdata19_from14 exists but container pg19-from14 does not` | Only the container was removed | `podman volume rm -f pgdata19_from14`, then run the script again |
 | Dry run says the new cluster is not empty | Target volume already holds an upgraded cluster | Remove container and volume (Step 14b), run the dry run again |
 | `WARN "/" is not a shared mount` | Podman message | Harmless |

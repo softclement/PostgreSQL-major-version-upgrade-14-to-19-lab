@@ -16,4 +16,15 @@ echo "== old =="; "$OLDBIN/pg_controldata" /old/data | grep -E "cluster state|ch
 echo "== new =="; "$NEWBIN/pg_controldata" "$NEWDATA" | grep -E "cluster state|checksum version"
 ARGS=(-b "$OLDBIN" -B "$NEWBIN" -d /old/data -D "$NEWDATA" --jobs=2)
 if [ "$MODE" = check ]; then ARGS+=(--check); fi
+set +e
 time "$NEWBIN/pg_upgrade" "${ARGS[@]}"
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then
+  echo
+  echo "== details from the pg_upgrade report files =="
+  for f in "$NEWDATA"/pg_upgrade_output.d/*/*.txt; do
+    [ -f "$f" ] && { echo "--- $(basename "$f")"; cat "$f"; }
+  done
+  exit "$rc"
+fi
